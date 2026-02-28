@@ -1,28 +1,38 @@
 import cv2
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer
-import av
+import numpy as np
+from PIL import Image
 
 st.title("DIP Project: Face Filter")
+st.write("Upload a photo to apply the 'DIP' face filter.")
 
-# Load the face detector
+# 1. Load the DIP Face Detector
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-def video_frame_callback(frame):
-    img = frame.to_ndarray(format="bgr24")
+# 2. File Uploader (Bypasses the connection error)
+img_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
-    # 1. Convert to grayscale (DIP Pre-processing)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+if img_file is not None:
+    # Convert uploaded file to OpenCV format
+    image = Image.open(img_file)
+    img_array = np.array(image)
+    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
 
-    # 2. Detect Faces
-    faces = face_cascade.detectMultiScale(gray, 1.1, 5)
+    # DIP PROCESS:
+    # A. Grayscale Conversion (Standard DIP preprocessing)
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
 
-    # 3. Draw "DIP" on the frame
+    # B. Feature Extraction (Detecting the Face)
+    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+
+    # C. Spatial Transformation (Placing text on specific coordinates)
     for (x, y, w, h) in faces:
-        cv2.putText(img, "DIP", (x, y - 20), 
+        # Draw "DIP" above the face
+        cv2.putText(img_bgr, "DIP", (x, y - 20), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
-        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        # Draw bounding box
+        cv2.rectangle(img_bgr, (x, y), (x + w, y + h), (255, 0, 0), 3)
 
-    return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-webrtc_streamer(key="filter", video_frame_callback=video_frame_callback)
+    # Display the result
+    result_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    st.image(result_rgb, caption='Processed Image', use_column_width=True)
