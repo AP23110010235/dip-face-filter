@@ -1,52 +1,42 @@
 import cv2
 import streamlit as st
-import numpy as np
-from PIL import Image
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+import av
 
-st.title("DIP Project: Face Filter")
-st.write("Upload a photo to see 'DIP' on your forehead!")
+# 1. Page Setup
+st.title("DIP Live Face Filter")
+st.write("Click 'Start' to see the DIP filter on your forehead in real-time.")
 
-# 1. Load the Haar Cascade Face Detector
-# This uses feature-based object detection to find the face coordinates
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+# 2. Define the Processing Logic
+class FaceFilterTransformer(VideoTransformerBase):
+    def __init__(self):
+        # Load the Haar Cascade for face detection
+        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-# 2. File Uploader
-img_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
+    def transform(self, frame):
+        # Convert the video frame into an OpenCV image (numpy array)
+        img = frame.to_ndarray(format="bgr24")
 
-if img_file is not None:
-    # Convert uploaded file to OpenCV format
-    image = Image.open(img_file)
-    img_array = np.array(image)
-    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+        # DIP STEP: Grayscale conversion (Standard preprocessing)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # DIP PROCESSING PIPELINE:
-    # Step A: Grayscale Conversion (Reduces noise/processing time)
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        # DIP STEP: Detection
+        faces = self.face_cascade.detectMultiScale(gray, 1.1, 5)
 
-    # Step B: Detect Faces (Returns x, y, width, height)
-    faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+        for (x, y, w, h) in faces:
+            # CALCULATE FOREHEAD POSITION
+            # x + 20% of width to center it
+            # y + 20% of height to bring it down from the top of the box
+            text_pos = (x + int(w * 0.2), y + int(h * 0.2))
 
-    # Step C: Spatial Mapping for Text Overlay
-    for (x, y, w, h) in faces:
-        # We calculate the forehead position:
-        # X: Start at x, then move 20% of the width in to center it better
-        # Y: Start at y (top of head), then move 25% of the height DOWN
-        text_x = x + int(w * 0.2)
-        text_y = y + int(h * 0.25)
+            # DRAW THE FILTER
+            cv2.putText(img, "DIP", text_pos, 
+                        cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 255, 0), 2)
+            
+            # Draw the box around the face
+            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        # Draw "DIP" on the Forehead
-        cv2.putText(img_bgr, "DIP", (text_x, text_y), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
-        
-        # Optional: Draw the bounding box for your project report
-        cv2.rectangle(img_bgr, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        return img
 
-    # Convert back to RGB to display in Streamlit
-    result_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    st.image(result_rgb, caption='Processed Image with Forehead Filter', use_column_width=True)
-    
-    # Add a download button for your project submission
-    st.download_button(label="Download Processed Image", 
-                       data=cv2.imencode('.jpg', img_bgr)[1].tobytes(), 
-                       file_name="dip_output.jpg", 
-                       mime="image/jpeg")
+# 3. Launch the WebRTC Streamer
+webrtc_streamer(key="face-filter", video_transformer_factory=FaceFilterTransformer)
