@@ -1,42 +1,60 @@
 import cv2
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
-import av
+import numpy as np
+import tempfile
 
-# 1. Page Setup
-st.title("DIP Live Face Filter")
-st.write("Click 'Start' to see the DIP filter on your forehead in real-time.")
+st.title("DIP Project: Video Face Filter")
+st.write("Upload a video to apply the 'DIP' forehead filter.")
 
-# 2. Define the Processing Logic
-class FaceFilterTransformer(VideoTransformerBase):
-    def __init__(self):
-        # Load the Haar Cascade for face detection
-        self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+# Load the DIP Face Detector
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-    def transform(self, frame):
-        # Convert the video frame into an OpenCV image (numpy array)
-        img = frame.to_ndarray(format="bgr24")
+# 1. Video File Uploader
+video_file = st.file_uploader("Upload a video of your face", type=["mp4", "mov", "avi"])
 
-        # DIP STEP: Grayscale conversion (Standard preprocessing)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+if video_file is not None:
+    # Save the uploaded video to a temporary file
+    tfile = tempfile.NamedTemporaryFile(delete=False) 
+    tfile.write(video_file.read())
 
-        # DIP STEP: Detection
-        faces = self.face_cascade.detectMultiScale(gray, 1.1, 5)
+    # Open the video using OpenCV
+    cap = cv2.VideoCapture(tfile.name)
+    st.write("Processing video... please wait.")
 
+    # Get video properties for saving
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    
+    # Placeholder for the processed video
+    st_frame = st.empty()
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # DIP PROCESS:
+        # A. Grayscale Conversion (Standard DIP preprocessing)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # B. Feature Extraction (Detecting the Face)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
+
+        # C. Spatial Transformation (Placing text on forehead)
         for (x, y, w, h) in faces:
-            # CALCULATE FOREHEAD POSITION
-            # x + 20% of width to center it
-            # y + 20% of height to bring it down from the top of the box
-            text_pos = (x + int(w * 0.2), y + int(h * 0.2))
-
-            # DRAW THE FILTER
-            cv2.putText(img, "DIP", text_pos, 
-                        cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 255, 0), 2)
+            # Position calculation for forehead
+            text_x = x + int(w * 0.2)
+            text_y = y + int(h * 0.2)
             
-            # Draw the box around the face
-            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+            # Overlay "DIP" text
+            cv2.putText(frame, "DIP", (text_x, text_y), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+            # Draw face box
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-        return img
+        # Display the frame in the app
+        st_frame.image(frame, channels="BGR", use_column_width=True)
 
-# 3. Launch the WebRTC Streamer
-webrtc_streamer(key="face-filter", video_transformer_factory=FaceFilterTransformer)
+    cap.release()
+    st.success("Video processing complete!")
